@@ -35,6 +35,7 @@ def extract_features(packet):
 
 def analyze_pcap(pcap_file, model):
     malicious_nodes = []
+    device_stats = {}  # Dictionary to store packet statistics for each device
     
     # Load the pcap file
     packets = rdpcap(pcap_file)
@@ -46,6 +47,23 @@ def analyze_pcap(pcap_file, model):
         
         # Append features to the data list
         data.append(features)
+        
+        # Update device packet statistics
+        if IP in packet:
+            src_ip = str(packet[IP].src)
+            dst_ip = str(packet[IP].dst)
+            
+            # Update sender statistics
+            if src_ip in device_stats:
+                device_stats[src_ip]['sent'] += 1
+            else:
+                device_stats[src_ip] = {'sent': 1, 'received': 0}
+            
+            # Update receiver statistics
+            if dst_ip in device_stats:
+                device_stats[dst_ip]['received'] += 1
+            else:
+                device_stats[dst_ip] = {'sent': 0, 'received': 1}
     
     # Convert data to a DataFrame
     df = pd.DataFrame(data)
@@ -61,32 +79,37 @@ def analyze_pcap(pcap_file, model):
     x_test = xgb.DMatrix(df, enable_categorical=True)
     prediction = model.predict(x_test)
     
-    # Check if the node is predicted as malicious and collect the summaries
+    # Check if the node is predicted as malicious and collect the details
     results = []
     for i, p in enumerate(prediction):
         if p == 1:
-            results.append(packets[i].summary())
-            malicious_nodes.append(packets[i])
+            packet = packets[i]
+            result = {
+                'summary': packet.summary(),
+                'src_ip': packet[IP].src,
+                'dst_ip': packet[IP].dst,
+                'src_port': packet[TCP].sport if TCP in packet else None,
+                'dst_port': packet[TCP].dport if TCP in packet else None,
+                'tcp_flags': packet[TCP].flags if TCP in packet else None
+            }
+            results.append(result)
     
-    return results, malicious_nodes
+    return results, malicious_nodes, device_stats
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
-        # Load the pretrained XGBoost model
-        model = xgb.Booster(model_file='pretrained_model.model')
-        
-        # Get the uploaded pcap file
         pcap_file = request.files['pcap_file']
-        
-        # Save the pcap file locally
         pcap_file.save('uploaded.pcap')
         
-        # Analyze the uploaded pcap file
-        results, malicious_nodes = analyze_pcap('uploaded.pcap', model)
+        # Load the pretrained model
+        model = xgb.Booster()
+        model.load_model('pretrained_model.model')
         
-        # Display the malicious nodes
-        return render_template('index.html', results=results)
+        # Analyze the pcap file
+        results, malicious_packets, device_statistics = analyze_pcap('uploaded.pcap', model)
+        
+        return render_template('index.html', malicious_results=results, device_stats=device_statistics)
     
     return render_template('index.html')
 
