@@ -50,25 +50,9 @@ y_pred = model.predict(dtest)
 accuracy = accuracy_score(y_test, y_pred)
 print(f'Accuracy: {accuracy}')
 
-classification_report = classification_report(y_test, y_pred)
-print(f'Classification Report:\n{classification_report}')
+cr = classification_report(y_test, y_pred)
+print(f'Classification Report:\n{cr}')
 
-# Define the parameter grid for hyperparameter tuning
-param_grid = {'learning_rate': [0.1, 0.01, 0.001],
-              'max_depth': [3, 5, 7],
-              'min_child_weight': [1, 3, 5],
-              'subsample': [0.5, 0.7],
-              'colsample_bytree': [0.5, 0.7]}
-
-# Create an instance of XGBClassifier
-xgb_classifier = XGBClassifier()
-
-# Perform grid search for hyperparameter tuning
-grid_search = GridSearchCV(estimator=xgb_classifier, param_grid=param_grid, scoring='accuracy', cv=3)
-grid_search.fit(X_train, y_train)
-
-# Get the best parameters and score from grid search
-best_params = grid_search.best_params_
-best_score = grid_search.best_score_
-print(f'Best Parameters: {best_params}')
-print(f'Best Score: {best_score}')
+# Save the trained model as a pretrained model file
+model_file = 'pretrained_model.model'
+model.save_model(model_file)
