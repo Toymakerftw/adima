@@ -3,10 +3,13 @@ import subprocess
 
 def dump_and_analyze():
     # Execute dump.py
-    subprocess.run(['python', 'dump.py'])
+    subprocess.run(['python3', 'dump.py'])
 
     # Execute analyze.py
-    subprocess.run(['python', 'analyze.py'])
+    subprocess.run(['python3', 'analyze.py'])
+
+    # Execute mac.py
+    subprocess.run(['python3', 'mac.py'])
 
 def start_scheduler():
     scheduler = BackgroundScheduler()
