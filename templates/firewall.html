@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Firewall Configuration</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.15/dist/tailwind.min.css" rel="stylesheet">
+  <style>
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .toast {
+      position: fixed;
+      bottom: 1rem;
+      right: 1rem;
+      padding: 1rem;
+      background-color: #4CAF50;
+      color: #FFF;
+      border-radius: 4px;
+      z-index: 9999;
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1 class="text-2xl font-bold mb-4">Malicious Devices</h1>
+    <table id="deviceTable" class="w-full">
+      <thead>
+        <tr>
+          <th class="py-2 px-4 border-b border-gray-300">IP Address</th>
+          <th class="py-2 px-4 border-b border-gray-300">MAC Address</th>
+          <th class="py-2 px-4 border-b border-gray-300">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for device in devices %}
+        <tr>
+          <td class="py-2 px-4 border-b border-gray-300">{{ device[0] }}</td>
+          <td class="py-2 px-4 border-b border-gray-300">{{ device[1] }}</td>
+          <td class="py-2 px-4 border-b border-gray-300">
+            <button class="blockButton bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+              onclick="blockDevice('{{ device[1] }}')">Block</button>
+            <button class="unblockButton bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded ml-2"
+              onclick="unblockDevice('{{ device[1] }}')">Unblock</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+  <script>
+    function showToast(message) {
+      var toast = document.getElementById('toast');
+      toast.innerText = message;
+      toast.style.display = 'block';
+      setTimeout(function() {
+        toast.style.display = 'none';
+      }, 3000);
+    }
+
+    function blockDevice(mac) {
+      $.ajax({
+        url: '/block_device',
+        type: 'POST',
+        dataType: 'json',
+        data: { mac: mac },
+        success: function (response) {
+          showToast(response.message);
+          // You can add code here to update the UI or display a success message
+        },
+        error: function (xhr, status, error) {
+          showToast('Failed to block device.');
+          console.log(xhr.responseText);
+          // You can add code here to display an error message
+        }
+      });
+    }
+
+    function unblockDevice(mac) {
+      $.ajax({
+        url: '/unblock_device',
+        type: 'POST',
+        dataType: 'json',
+        data: { mac: mac },
+        success: function (response) {
+          showToast(response.message);
+          // You can add code here to update the UI or display a success message
+        },
+        error: function (xhr, status, error) {
+          showToast('Failed to unblock device.');
+          console.log(xhr.responseText);
+          // You can add code here to display an error message
+        }
+      });
+    }
+  </script>
+</body>
+
+</html>
