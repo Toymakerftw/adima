@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>System Statistics</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/3.1.3/socket.io.js"></script>
+</head>
+<body>
+    <h1>System Statistics</h1>
+
+    <div id="stats-container">
+        <h2>Network Devices: <span id="num-devices"></span></h2>
+        <h2>System Uptime: <span id="uptime"></span></h2>
+        <h2>CPU Usage: <span id="cpu-usage"></span>%</h2>
+        <h2>Memory Usage:</h2>
+        <ul>
+            <li>Total: <span id="memory-total"></span></li>
+            <li>Available: <span id="memory-available"></span></li>
+            <li>Used: <span id="memory-used"></span></li>
+            <li>Percentage: <span id="memory-percent"></span>%</li>
+        </ul>
+        <h2>Storage Usage:</h2>
+        <ul id="storage-list">
+            <!-- Storage information will be added dynamically -->
+        </ul>
+    </div>
+
+    <script>
+        // Connect to the SocketIO server
+        const socket = io();
+
+        // Event handler for receiving updated statistics
+        socket.on('update_stats', function(data) {
+            // Update the DOM with the received statistics
+            document.getElementById('num-devices').textContent = data.num_devices;
+            document.getElementById('uptime').textContent = data.uptime;
+            document.getElementById('cpu-usage').textContent = data.cpu_usage;
+            document.getElementById('memory-total').textContent = data.memory_usage.total;
+            document.getElementById('memory-available').textContent = data.memory_usage.available;
+            document.getElementById('memory-used').textContent = data.memory_usage.used;
+            document.getElementById('memory-percent').textContent = data.memory_usage.percent;
+
+            // Update the storage usage information dynamically
+            const storageList = document.getElementById('storage-list');
+            storageList.innerHTML = '';
+            for (const device in data.storage_usage) {
+                const usage = data.storage_usage[device];
+                const listItem = document.createElement('li');
+                listItem.textContent = `${device}: Total - ${usage.total}, Used - ${usage.used}, Free - ${usage.free}, Percentage - ${usage.percent}%`;
+                storageList.appendChild(listItem);
+            }
+        });
+
+        // Request statistics from the server
+        socket.emit('request_stats');
+    </script>
+</body>
+</html>
+    
