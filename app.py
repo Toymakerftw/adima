@@ -1,176 +1,154 @@
-from scapy.all import *
-from collections import defaultdict
-import multiprocessing
+from flask import Flask, render_template
+from flask_socketio import SocketIO
+from scheduler import start_scheduler
+import psutil
+import subprocess
+import time
 import sqlite3
 
-# Function to calculate average network bandwidth
-def calculate_average_bandwidth(packet_count, total_bytes):
-    if packet_count == 0:
-        return 0
-    return total_bytes / packet_count
 
-# Function to detect suspicious devices
-def detect_suspicious_devices(pcap_file, time_window):
-    packets = rdpcap(pcap_file)
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'your-secret-key'
+socketio = SocketIO(app)
 
-    devices = defaultdict(int)
-    device_bandwidth = defaultdict(int)
-    unique_destinations = defaultdict(set)
-    malicious_ips = {"10.0.0.1", "192.168.1.100"}  # Example list of known malicious IP addresses
+@socketio.on('connect')
+def handle_connect():
+    print('Client connected')
 
-    # Create a new SQLite connection for each time window
-    conn = sqlite3.connect('triage.db')
+@socketio.on('disconnect')
+def handle_disconnect():
+    print('Client disconnected')
 
-    for packet in packets:
-        if packet.haslayer(IP):
-            src_ip = packet[IP].src
-            dst_ip = packet[IP].dst
+def get_network_devices():
+    """
+    Get the number of devices on the network using ARP.
+    """
+    arp_output = subprocess.check_output(['arp', '-a']).decode('utf-8')
+    arp_lines = arp_output.split('\n')
+    device_lines = [line for line in arp_lines if ' at ' in line]
+    num_devices = len(device_lines)
+    return num_devices
 
-            # Detect repeated or unauthorized attempts
-            if packet.haslayer(TCP) and packet[TCP].flags & 2 and not packet[TCP].flags & 16:
-                devices[src_ip] += 1
+@app.route('/')
+def index():
+    return render_template('index.html')
 
-            # Detect port scanning
-            if packet.haslayer(TCP) and packet[TCP].flags & 2 and not packet[TCP].flags & 16 and not packet[TCP].flags & 1:
-                devices[src_ip] += 1
-
-            # Detect brute-force attacks
-            if packet.haslayer(TCP) and packet[TCP].flags & 4:
-                devices[src_ip] += 1
-
-            # Calculate network bandwidth
-            device_bandwidth[src_ip] += len(packet)
-            device_bandwidth[dst_ip] += len(packet)
-
-            # Detect devices communicating with multiple unique destinations
-            if packet.haslayer(TCP):
-                unique_destinations[src_ip].add(dst_ip)
-
-            # Detect devices communicating with known malicious IP addresses
-            if src_ip in malicious_ips or dst_ip in malicious_ips:
-                devices[src_ip] += 1
-
-            # Insert malicious IPs into the SQLite table
-            cursor = conn.cursor()
-            cursor.execute("INSERT OR IGNORE INTO mal_node (ip) VALUES (?)", (src_ip,))
-            cursor.execute("INSERT OR IGNORE INTO mal_node (ip) VALUES (?)", (dst_ip,))
-            conn.commit()
-
-    # Close the SQLite connection
-    conn.close()
-
-    return devices, device_bandwidth, unique_destinations
-
-# Function to process a time window of pcap file
-def process_time_window(pcap_file, time_window):
-    devices, device_bandwidth, unique_destinations = detect_suspicious_devices(pcap_file, time_window)
-
-    # Calculate average network bandwidth
-    avg_bandwidth = calculate_average_bandwidth(sum(device_bandwidth.values()), sum(device_bandwidth.values()))
-
-    # Detect devices with high network bandwidth
-    high_bandwidth_devices = [device for device, bandwidth in device_bandwidth.items() if bandwidth > (2 * avg_bandwidth)]
-
-    # Detect devices communicating with multiple unique destinations
-    multi_destination_devices = [device for device, destinations in unique_destinations.items() if len(destinations) > 1]
-
-    results = {
-        "repeated_attempts": {device: attempts for device, attempts in devices.items() if attempts > 0},
-        "port_scanning": {device: attempts for device, attempts in devices.items() if attempts > 1},
-        "brute_force": {device: attempts for device, attempts in devices.items() if attempts > 0},
-        "high_bandwidth": {device: bandwidth for device, bandwidth in device_bandwidth.items() if bandwidth > (2 * avg_bandwidth)},
-        "multi_destination": {device: destinations for device, destinations in unique_destinations.items() if len(destinations) > 1}
-    }
-
-    return results
-
-# Run the script
-def main():
-    pcap_file = "pcap/packets.pcap"
-    time_window = 60  # Time window in seconds
-
-    # Create the SQLite connection and table
+@app.route('/firewall')
+def firewall():
+    # Connect to the SQLite database
     conn = sqlite3.connect('triage.db')
     cursor = conn.cursor()
-    cursor.execute("CREATE TABLE IF NOT EXISTS mal_node (ip TEXT)")
 
-    # Split the pcap file into time windows
-    packets = rdpcap(pcap_file)
-    time_windows = []
-    current_window = []
-    current_time = packets[0].time
+    # Fetch IP and MAC addresses from the mal_mac table
+    cursor.execute('SELECT ip, mac FROM mal_mac')
+    devices = cursor.fetchall()
 
-    for packet in packets:
-        packet_time = packet.time
+    # Close the database connection
+    conn.close()
 
-        if packet_time - current_time > time_window:
-            time_windows.append(current_window)
-            current_window = []
-            current_time = packet_time
+    # Render the template with the devices data
+    return render_template('firewall.html', devices=devices)
 
-        current_window.append(packet)
+@app.route('/block_device', methods=['POST'])
+def block_device():
+    mac = request.form.get('mac')
 
-    if current_window:
-        time_windows.append(current_window)
+    # Block the MAC address using firewalld
+    subprocess.run(['firewall-cmd', '--permanent', '--add-rich-rule',
+                    'rule family="ipv4" source address="{0}" drop'.format(mac)])
+    subprocess.run(['firewall-cmd', '--reload'])
 
-    # Process each time window using multiprocessing
-    pool = multiprocessing.Pool()
-    results = pool.starmap(process_time_window, [(pcap_file, time_window) for _ in time_windows])
-    pool.close()
-    pool.join()
+    # Return a JSON response
+    return {'message': 'Device blocked successfully'}
 
-    # Aggregate the results from all time windows
-    final_results = {
-        "repeated_attempts": defaultdict(int),
-        "port_scanning": defaultdict(int),
-        "brute_force": defaultdict(int),
-        "high_bandwidth": defaultdict(int),
-        "multi_destination": defaultdict(set)
+@app.route('/unblock_device', methods=['POST'])
+def unblock_device():
+    mac = request.form.get('mac')
+
+    # Unblock the MAC address using firewalld
+    subprocess.run(['firewall-cmd', '--permanent', '--remove-rich-rule',
+                    'rule family="ipv4" source address="{0}" drop'.format(mac)])
+    subprocess.run(['firewall-cmd', '--reload'])
+
+    # Return a JSON response
+    return {'message': 'Device unblocked successfully'}
+
+@socketio.on('request_stats')
+def send_stats():
+    while True:
+        # Get the network devices count
+        num_devices = get_network_devices()
+
+        # Get the system uptime
+        uptime = get_system_uptime()
+
+        # Get the CPU usage
+        cpu_usage = get_cpu_usage()
+
+        # Get the memory usage
+        memory_usage = get_memory_usage()
+
+        # Get the storage usage
+        storage_usage = get_storage_usage()
+
+        # Emit the statistics to the client
+        socketio.emit('update_stats', {
+            'uptime': uptime,
+            'cpu_usage': cpu_usage,
+            'memory_usage': memory_usage,
+            'storage_usage': storage_usage,
+            'num_devices': num_devices
+        })
+
+        time.sleep(1)
+
+def get_system_uptime():
+    """
+    Get the system uptime in a human-readable format.
+    """
+    uptime = time.time() - psutil.boot_time()
+    minutes, seconds = divmod(uptime, 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+    return f"{int(days)} days, {int(hours)} hours, {int(minutes)} minutes, {int(seconds)} seconds"
+
+def get_cpu_usage():
+    """
+    Get the current CPU usage as a percentage.
+    """
+    return psutil.cpu_percent(interval=1)
+
+def get_memory_usage():
+    """
+    Get the current memory usage in a human-readable format.
+    """
+    memory = psutil.virtual_memory()
+    return {
+        'total': memory.total,
+        'available': memory.available,
+        'used': memory.used,
+        'percent': memory.percent
     }
 
-    for time_window_result in results:
-        for activity_type, devices in time_window_result.items():
-            for device, value in devices.items():
-                final_results[activity_type][device] += value
+def get_storage_usage():
+    """
+    Get the current storage usage in a human-readable format.
+    """
+    partitions = psutil.disk_partitions()
+    usage = {}
+    for partition in partitions:
+        try:
+            partition_usage = psutil.disk_usage(partition.mountpoint)
+            usage[partition.device] = {
+                'total': partition_usage.total,
+                'used': partition_usage.used,
+                'free': partition_usage.free,
+                'percent': partition_usage.percent
+            }
+        except Exception as e:
+            print(f"Error retrieving usage information for {partition.device}: {e}")
+    return usage
 
-
-    # Close the SQLite connection
-    conn.close()
-    
-    '''
-    # Print the aggregated results or "No malicious devices found"
-    found_malicious_devices = False
-
-    print("Devices with repeated/unauthorized attempts:")
-    for device, attempts in final_results["repeated_attempts"].items():
-        print(f"Device: {device}, Attempts: {attempts}")
-        found_malicious_devices = True
-
-    print("\nDevices conducting port scanning:")
-    for device, attempts in final_results["port_scanning"].items():
-        print(f"Device: {device}, Attempts: {attempts}")
-        found_malicious_devices = True
-
-    print("\nDevices involved in brute-force attacks:")
-    for device, attempts in final_results["brute_force"].items():
-        print(f"Device: {device}, Attempts: {attempts}")
-        found_malicious_devices = True
-
-    print("\nDevices with high network bandwidth:")
-    for device, bandwidth in final_results["high_bandwidth"].items():
-        print(f"Device: {device}, Bandwidth: {bandwidth} bytes")
-        found_malicious_devices = True
-
-    print("\nDevices communicating with multiple unique destinations:")
-    for device, destinations in final_results["multi_destination"].items():
-        print(f"Device: {device}, Unique Destinations: {', '.join(destinations)}")
-        found_malicious_devices = True
-
-    if not found_malicious_devices:
-        print("No malicious devices found")
-
-        '''
-
-# Execute the main function
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    start_scheduler()
+    socketio.run(app)
