@@ -3,6 +3,7 @@ from collections import defaultdict
 import multiprocessing
 import sqlite3
 import socket
+import xgboost as xgb
 
 # Function to calculate average network bandwidth
 def calculate_average_bandwidth(packet_count, total_bytes):
@@ -84,8 +85,23 @@ def detect_suspicious_devices(pcap_file, time_window, db_path, malicious_ips_fil
     return devices, device_bandwidth, unique_destinations, high_bandwidth_nodes
 
 # Function to process a time window of pcap file
-def process_time_window(pcap_file, time_window, db_path, malicious_ips_file):
+def process_time_window(pcap_file, time_window, db_path, malicious_ips_file, model):
     devices, device_bandwidth, unique_destinations, _ = detect_suspicious_devices(pcap_file, time_window, db_path, malicious_ips_file)
+
+    # Prepare the data for prediction
+    data = []
+    for device, bandwidth in device_bandwidth.items():
+        features = [bandwidth, devices[device]]
+        data.append(features)
+
+    # Perform prediction using the pretrained model
+    dmatrix = xgb.DMatrix(data)
+    predictions = model.predict(dmatrix)
+
+    # Update the results dictionary with prediction scores
+    for i, device in enumerate(device_bandwidth.keys()):
+        score = predictions[i]
+        device_bandwidth[device] = score
 
     # Calculate average network bandwidth
     avg_bandwidth = calculate_average_bandwidth(sum(device_bandwidth.values()), sum(device_bandwidth.values()))
@@ -120,12 +136,16 @@ def main():
     time_window = 60  # Time window in seconds
     db_path = "triage.db"
     malicious_ips_file = "resources/mal_ip.txt"
+    model_file = "pretrained_model.model"  # Path to the pretrained XGBoost model file
 
     # Create the SQLite connection and table
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     cursor.execute("CREATE TABLE IF NOT EXISTS mal_node (ip TEXT)")
     cursor.execute("CREATE TABLE IF NOT EXISTS hiband_node (ip TEXT, domain TEXT)")
+
+    # Load the pretrained XGBoost model
+    model = xgb.Booster(model_file=model_file)
 
     # Split the pcap file into time windows
     packets = rdpcap(pcap_file)
@@ -148,7 +168,7 @@ def main():
 
     # Process each time window using multiprocessing
     pool = multiprocessing.Pool()
-    results = pool.starmap(process_time_window, [(pcap_file, time_window, db_path, malicious_ips_file) for _ in time_windows])
+    results = pool.starmap(process_time_window, [(pcap_file, time_window, db_path, malicious_ips_file, model) for _ in time_windows])
     pool.close()
     pool.join()
 
