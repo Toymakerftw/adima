@@ -19,6 +19,6 @@ def capture_packets(interface):
     print("Packet capture completed.")
 
 # Change the interface name to the one you want to capture packets on
-interface = "wlo1"
+interface = "enp0s3"
 
 capture_packets(interface)
