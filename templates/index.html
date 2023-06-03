@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Packet Analysis</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <style>
+        .malicious-packets {
+            margin-top: 30px;
+        }
+
+        .packet-summary {
+            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        .packet-summary p {
+            margin: 0;
+        }
+
+        .packet-statistics {
+            margin-top: 30px;
+        }
+
+        .packet-statistics th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mt-4">Packet Analysis</h1>
+        <form method="POST" enctype="multipart/form-data" action="/">
+            <div class="form-group">
+                <label for="pcap_file">Upload PCAP File:</label>
+                <input type="file" class="form-control-file" name="pcap_file" id="pcap_file" accept=".pcap" required>
+            </div>
+            <label for="local_ip">Local IP Address:</label>
+            <input type="text" id="local_ip" name="local_ip" required>
+            <button type="submit" class="btn btn-primary">Analyze</button>
+        </form>
+        
+        {% if message %}
+        <p>{{ message }}</p>
+        {% endif %}
+
+        {% if malicious_results %}
+        <div class="malicious-packets">
+            <h2>Malicious Packets:</h2>
+            {% for result in malicious_results %}
+            <div class="packet-summary">
+                <p>Summary: {{ result.summary }}</p>
+                <p>Source IP: {{ result.src_ip }}</p>
+                <p>Destination IP: {{ result.dst_ip }}</p>
+                <p>Source Port: {{ result.src_port }}</p>
+                <p>Destination Port: {{ result.dst_port }}</p>
+                <p>TCP Flags: {{ result.tcp_flags }}</p>
+            </div>
+            {% endfor %}
+        </div>
+        
+        {% if device_stats %}
+        <div class="packet-statistics">
+            <h2>Packet Statistics:</h2>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Device</th>
+                        <th>Sent Packets</th>
+                        <th>Received Packets</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for device, stats in device_stats.items() %}
+                    <tr>
+                        <td>{{ device }}</td>
+                        <td>{{ stats.sent }}</td>
+                        <td>{{ stats.received }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+</body>
+</html>
