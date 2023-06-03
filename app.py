@@ -15,7 +15,7 @@ def capture_pcap():
     interface = 'wlo1'
     
     # Capture pcap for 3 minutes
-    tcpdump_process = subprocess.Popen(['sudo', 'tcpdump', '-i', interface, '-w', pcap_file, '-G', '180'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    tcpdump_process = subprocess.Popen(['tcpdump', '-i', interface, '-w', pcap_file, '-G', '180'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     
     # Wait for 3 minutes
     time.sleep(180)
@@ -29,7 +29,7 @@ def capture_pcap():
         time.sleep(600)
         
         # Capture pcap for 3 minutes
-        tcpdump_process = subprocess.Popen(['sudo', 'tcpdump', '-i', interface, '-w', pcap_file, '-G', '180'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        tcpdump_process = subprocess.Popen(['tcpdump', '-i', interface, '-w', pcap_file, '-G', '180'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         
         # Wait for 3 minutes
         time.sleep(180)
