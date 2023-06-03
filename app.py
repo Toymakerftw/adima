@@ -1,12 +1,17 @@
 import xgboost as xgb
 import pandas as pd
 from scapy.all import *
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, redirect
 from anomaly import detect_anomalies
+from subprocess import Popen, PIPE
+import os
+import signal
+import time
 
 app = Flask(__name__)
 
 def extract_features(packet):
+    pcap_file = 'pcap/packets.pcap'  # Path to the pcap file captured by tcpdump
     features = {}
 
     # Extract features from the packet
@@ -41,6 +46,7 @@ def extract_features(packet):
     return features
 
 def analyze_pcap(pcap_file, model, local_ip):
+    pcap_file = 'pcap/packets.pcap'  # Path to the pcap file captured by tcpdump
     malicious_nodes = []
     device_stats = {}
 
@@ -106,29 +112,46 @@ def analyze_pcap(pcap_file, model, local_ip):
 
     return results, malicious_nodes, device_stats
 
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    if request.method == 'POST':
-        pcap_file = request.files['pcap_file']
-        pcap_file.save('uploaded.pcap')
-        
-        # Load the pretrained model
-        model = xgb.Booster()
-        model.load_model('pretrained_model.model')
 
-        # Get the local IP address from the request
-        local_ip = request.form['local_ip']
-        
-        # Analyze the pcap file
-        results, malicious_packets, device_statistics = analyze_pcap('uploaded.pcap', model, local_ip)
-        
-        message = "No Malicious Activity Detected"
-        if len(malicious_packets) > 0:
-            message = None
-        
-        return render_template('index.html', malicious_results=results, device_stats=device_statistics, message=message)
-    
-    return render_template('index.html')
+@app.route('/')
+def index():
+    pcap_file = 'pcap/packets.pcap'  # Path to the pcap file captured by tcpdump
+
+    # Load the pretrained model
+    model = xgb.Booster()
+    model.load_model('pretrained_model.model')
+
+    # Get the local IP address
+    local_ip = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
+
+    # Analyze the pcap file
+    results, malicious_packets, device_statistics = analyze_pcap(pcap_file, model, local_ip)
+
+    message = "No Malicious Activity Detected"
+    if len(malicious_packets) > 0:
+        message = None
+
+    return render_template('index.html', malicious_results=results, device_stats=device_statistics, message=message)
+
+@app.route('/capture_packets')
+def capture_packets():
+    temp_file = 'pcap/temp.pcap'  # Temporary file path for capturing packets
+    final_file = 'pcap/packets.pcap'  # Final file path for storing captured packets
+
+    # Start tcpdump to capture packets and save them to the temporary file
+    command = ['sudo','tcpdump', '-w', temp_file, '-G', '180']
+    process = Popen(command, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid)
+
+    # Wait for 3 minutes
+    time.sleep(180)
+
+    # Terminate tcpdump process
+    os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+
+    # Move the temporary file to the final location
+    os.rename(temp_file, final_file)
+
+    return redirect('/')
 
 if __name__ == '__main__':
     app.run(debug=True)
