@@ -21,6 +21,9 @@ def detect_anomalies(pcap_file, local_ip):
     # Check if the "anomalies" table exists, create it if not
     cursor.execute("CREATE TABLE IF NOT EXISTS anomalies (id INTEGER PRIMARY KEY AUTOINCREMENT, ip TEXT, timestamp TIMESTAMP)")
 
+    # Check if the "mal_node" table exists, create it if not
+    cursor.execute("CREATE TABLE IF NOT EXISTS mal_node (id INTEGER PRIMARY KEY AUTOINCREMENT, ip TEXT, timestamp TIMESTAMP)")
+
     # Check if the local IP is public or private
     local_ip_type = 'public' if is_public_ip(local_ip) else 'private'
 
@@ -51,6 +54,10 @@ def detect_anomalies(pcap_file, local_ip):
     timestamp = datetime.now()
     for ip in suspicious_ips:
         cursor.execute("INSERT INTO anomalies (ip, timestamp) VALUES (?, ?)", (ip, timestamp))
+
+    # Insert the malicious IPs into the "mal_node" table
+    if ip in suspicious_ips:
+        cursor.execute("INSERT INTO mal_node (ip, timestamp) VALUES (?, ?)", (ip, timestamp))
 
     # Commit the changes and close the database connection
     conn.commit()
