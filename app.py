@@ -1,15 +1,25 @@
 import xgboost as xgb
 import pandas as pd
 from scapy.all import *
-from flask import Flask, render_template, request, redirect
+from flask import Flask, render_template, request, redirect, jsonify
 from anomaly import detect_anomalies
 from subprocess import Popen, PIPE
 import os
 import signal
 import time
 import sqlite3
+from flask_socketio import SocketIO
 
 app = Flask(__name__)
+socketio = SocketIO(app)
+
+@socketio.on('connect', namespace='/capture_packets')
+def test_connect():
+       print('Client connected')
+
+@socketio.on('disconnect', namespace='/capture_packets')
+def test_disconnect():
+       print('Client disconnected')
 
 def extract_features(packet):
     pcap_file = 'pcap/packets.pcap'  # Path to the pcap file captured by tcpdump
@@ -126,10 +136,11 @@ def index():
     local_ip = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
 
     # Analyze the pcap file
-    results, malicious_packets, device_statistics = analyze_pcap(pcap_file, model, local_ip)
-
-    message = "No Malicious Activity Detected"
-    if len(malicious_packets) > 0:
+    results, malicious_nodes, device_statistics = analyze_pcap(pcap_file, model, local_ip)
+    
+    if not malicious_nodes:
+        message = "No Malicious Activity Detected"
+    else:
         message = None
 
     return render_template('index.html', malicious_results=results, device_stats=device_statistics, message=message)
@@ -143,6 +154,16 @@ def capture_packets():
     command = ['sudo','tcpdump', '-w', temp_file, '-G', '180']
     process = Popen(command, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid)
 
+    # Use a separate thread to periodically update the progress bar
+    def update_progress():
+        for i in range(180):
+            time.sleep(1)
+            progress = int((i + 1) / 180 * 100)
+            socketio.emit('progress', {'progress': progress}, namespace='/capture_packets')
+
+    thread = threading.Thread(target=update_progress)
+    thread.start()
+
     # Wait for 3 minutes
     time.sleep(180)
 
@@ -153,6 +174,10 @@ def capture_packets():
     os.rename(temp_file, final_file)
 
     return redirect('/')
+
+@app.route('/capture_packets_status')
+def capture_packets_status():
+    return jsonify({'progress': session.get('progress', 0)})
 
 @app.route('/firewall')
 def firewall():
