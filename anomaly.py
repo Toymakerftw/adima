@@ -56,7 +56,6 @@ def detect_anomalies(pcap_file, local_ip):
         cursor.execute("INSERT INTO anomalies (ip, timestamp) VALUES (?, ?)", (ip, timestamp))
 
     # Insert the malicious IPs into the "mal_node" table
-    if ip in suspicious_ips:
         cursor.execute("INSERT INTO mal_node (ip, timestamp) VALUES (?, ?)", (ip, timestamp))
 
     # Commit the changes and close the database connection
