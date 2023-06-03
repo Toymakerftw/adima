@@ -3,8 +3,43 @@ import pandas as pd
 from scapy.all import *
 from flask import Flask, render_template, request
 from anomaly import detect_anomalies
+import subprocess
+import time
+import threading
+from scapy.layers.inet import *
 
 app = Flask(__name__)
+
+def capture_pcap():
+    pcap_file = 'pcap/packets.pcap'
+    interface = 'wlo1'
+    
+    # Capture pcap for 3 minutes
+    tcpdump_process = subprocess.Popen(['tcpdump', '-i', interface, '-w', pcap_file, '-G', '180'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    
+    # Wait for 3 minutes
+    time.sleep(180)
+    
+    # Terminate tcpdump process
+    tcpdump_process.terminate()
+    
+    # Repeat the capture every 10 minutes
+    while True:
+        # Wait for 10 minutes
+        time.sleep(600)
+        
+        # Capture pcap for 3 minutes
+        tcpdump_process = subprocess.Popen(['tcpdump', '-i', interface, '-w', pcap_file, '-G', '180'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        # Wait for 3 minutes
+        time.sleep(180)
+        
+        # Terminate tcpdump process
+        tcpdump_process.terminate()
+
+# Start capturing pcap in a separate thread
+capture_thread = threading.Thread(target=capture_pcap)
+capture_thread.start()
 
 def extract_features(packet):
     features = {}
