@@ -27,6 +27,9 @@ def detect_anomalies(pcap_file, local_ip):
     # Read the pcap file using Scapy
     packets = rdpcap(pcap_file)
 
+    # Define a set to store suspicious IP addresses
+    suspicious_ips = set()
+
     # Iterate over each packet in the pcap file
     for packet in packets:
         if IP in packet:
@@ -34,15 +37,20 @@ def detect_anomalies(pcap_file, local_ip):
             dst_ip = packet[IP].dst
             protocol = packet[IP].proto
 
-            # Check if the source IP is an anomaly and not already in the table
+            # Check for suspicious behaviors
             if src_ip != local_ip and is_public_ip(src_ip):
-                cursor.execute("SELECT ip FROM anomalies WHERE ip = ?", (src_ip,))
-                existing_ip = cursor.fetchone()
+                # Check for specific suspicious behaviors and add IP to the set
+                if protocol == 17:  # UDP protocol
+                    suspicious_ips.add(src_ip)
+                elif TCP in packet:
+                    flags = packet[TCP].flags
+                    if flags == 'S' or flags == 'SA':  # TCP SYN or SYN-ACK
+                        suspicious_ips.add(src_ip)
 
-                if not existing_ip:
-                    # Insert the anomaly into the "anomalies" table
-                    timestamp = datetime.now()
-                    cursor.execute("INSERT INTO anomalies (ip, timestamp) VALUES (?, ?)", (src_ip, timestamp))
+    # Insert the suspicious IPs into the "anomalies" table
+    timestamp = datetime.now()
+    for ip in suspicious_ips:
+        cursor.execute("INSERT INTO anomalies (ip, timestamp) VALUES (?, ?)", (ip, timestamp))
 
     # Commit the changes and close the database connection
     conn.commit()
