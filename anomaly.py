@@ -18,6 +18,12 @@ def detect_anomalies(pcap_file, local_ip):
     conn = sqlite3.connect('triage.db')
     cursor = conn.cursor()
 
+    # Delete existing values in the "anomalies" table
+    cursor.execute("DELETE FROM anomalies")
+
+    # Delete existing values in the "mal_node" table
+    cursor.execute("DELETE FROM mal_node")
+
     # Check if the "anomalies" table exists, create it if not
     cursor.execute("CREATE TABLE IF NOT EXISTS anomalies (id INTEGER PRIMARY KEY AUTOINCREMENT, ip TEXT, timestamp TIMESTAMP)")
 
