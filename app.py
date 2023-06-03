@@ -7,6 +7,7 @@ from subprocess import Popen, PIPE
 import os
 import signal
 import time
+import sqlite3
 
 app = Flask(__name__)
 
@@ -152,6 +153,68 @@ def capture_packets():
     os.rename(temp_file, final_file)
 
     return redirect('/')
+
+@app.route('/firewall')
+def firewall():
+
+    # Create a SQLite database connection
+    conn = sqlite3.connect('triage.db')
+    cursor = conn.cursor()
+
+    # Select ip's from "mal_node" table
+    cursor.execute("SELECT ip FROM mal_node")
+
+    # Commit the changes and close the database connection
+    conn.commit()
+    conn.close()
+
+    # Fetch all the rows and store the IP addresses in the ip_addresses array
+    ip_addresses = [row[0] for row in cursor.fetchall()]
+
+    # Fetch IP addresses from mal_node table (replace this with your actual code)
+    #ip_addresses = ['192.168.1.1', '192.168.1.2', '192.168.1.3']
+
+    results = []
+    for ip in ip_addresses:
+        # Run arp command to get MAC address and hostname
+        arp_output = subprocess.check_output(['arp', '-a', ip]).decode('utf-8')
+
+        # Parse the output to extract MAC address and hostname
+        mac_address = arp_output.split(' ')[3]
+        hostname = arp_output.split(' ')[0]
+
+        # Add the result to the list
+        results.append({'ip': ip, 'mac_address': mac_address, 'hostname': hostname})
+
+    # Render the template with the results
+    return render_template('firewall.html', results=results)
+
+@app.route('/block', methods=['POST'])
+def block():
+    mac_address = request.form['mac_address']
+
+    # Create a SQLite database connection
+    conn = sqlite3.connect('triage.db')
+    cursor = conn.cursor()
+
+    # Create the "blocked" table if it doesn't exist
+    cursor.execute('''CREATE TABLE IF NOT EXISTS blocked ( id INTEGER PRIMARY KEY AUTOINCREMENT, mac_address TEXT)''')
+
+    # Run firewall-cmd command to block the MAC address with sudo privileges
+    subprocess.run(['sudo', 'firewall-cmd', '--permanent', '--add-rich-rule',
+                    'rule source mac="{0}" drop'.format(mac_address)], check=True)
+
+    # Reload the firewall with sudo privileges
+    subprocess.run(['sudo', 'firewall-cmd', '--reload'], check=True)
+
+    # Insert the blocked MAC address into the "blocked" table
+    cursor.execute("INSERT INTO blocked (mac_address) VALUES (?)", (mac_address,))
+
+    # Commit the changes and close the database connection
+    conn.commit()
+    conn.close()
+
+    return "Blocked MAC address: {0}".format(mac_address)
 
 if __name__ == '__main__':
     app.run(debug=True)

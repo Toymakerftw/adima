@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Firewall</title>
+    <style>
+        .block-button {
+            background-color: #ff3333;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Firewall</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>IP Address</th>
+                <th>MAC Address</th>
+                <th>Hostname</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for result in results %}
+            <tr>
+                <td>{{ result.ip }}</td>
+                <td>{{ result.mac_address }}</td>
+                <td>{{ result.hostname }}</td>
+                <td>
+                    <form action="/block" method="POST">
+                        <input type="hidden" name="mac_address" value="{{ result.mac_address }}">
+                        <input type="submit" class="block-button" value="Block">
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
