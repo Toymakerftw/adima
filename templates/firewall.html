@@ -2,45 +2,194 @@
 <html>
 <head>
     <title>Firewall</title>
+    <!-- Bootstrap CSS -->
+    <meta charset="utf8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500&display=swap" rel="stylesheet">
     <style>
-        .block-button {
-            background-color: #ff3333;
-            color: white;
-            border: none;
-            padding: 5px 10px;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            cursor: pointer;
+        body {
+            background-color: white;
+            font-family: 'Exo 2', sans-serif;
         }
+
+        .navbar-brand {
+            font-size: 40px;
+        }
+
+        .navbar-brand:hover {
+            color: black;
+        }
+
+        .navbar {
+            border-radius: .25rem;
+        }
+
+        .navbar-dark .navbar-nav .nav-link {
+            color: black;
+        }
+
+        .navbar-dark .navbar-nav .nav-link:hover {
+            color: red;
+        }
+
+        .container {
+            margin-top: 20px;
+            padding: 20px;
+        }    
     </style>
 </head>
 <body>
-    <h1>Firewall</h1>
-    <table>
-        <thead>
-            <tr>
-                <th>IP Address</th>
-                <th>MAC Address</th>
-                <th>Hostname</th>
-                <th>Action</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for result in results %}
-            <tr>
-                <td>{{ result.ip }}</td>
-                <td>{{ result.mac_address }}</td>
-                <td>{{ result.hostname }}</td>
-                <td>
-                    <form action="/block" method="POST">
-                        <input type="hidden" name="mac_address" value="{{ result.mac_address }}">
-                        <input type="submit" class="block-button" value="Block">
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" style="color:black" href="#">Triage</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#">Anomalies</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#">Firewall</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#">About</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-6">
+                <h1 class="mt-3">Blocked Websites and MAC Addresses</h1>
+                {% if not blocked_websites and not blocked_mac_addresses %}
+                    <p>No devices blocked.</p>
+                {% else %}
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Website</th>
+                            <th>MAC Address</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for website in blocked_websites %}
+                        <tr>
+                            <td>{{ website }}</td>
+                            <td></td>
+                            <td>
+                                <form action="/unblock" method="post">
+                                    <input type="hidden" name="website" value="{{ website }}">
+                                    <button type="submit" class="btn btn-danger">Unblock</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% for mac_address in blocked_mac_addresses %}
+                        <tr>
+                            <td></td>
+                            <td>{{ mac_address }}</td>
+                            <td>
+                                <form action="/unblock" method="post">
+                                    <input type="hidden" name="mac_address" value="{{ mac_address }}">
+                                    <button type="submit" class="btn btn-danger">Unblock</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% endif %}
+            </div>
+            <div class="col-lg-6">
+                <h1 class="mt-3">Block Website or MAC Address</h1>
+                <form action="/block" method="post">
+                    <div class="mb-3">
+                        <label for="website" class="form-label">Website:</label>
+                        <input type="text" name="website" id="website" class="form-control">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Block</button>
+                </form>
+                <form action="/block" method="post">
+                    <div class="mb-3">
+                        <label for="mac_address" class="form-label">MAC Address:</label>
+                        <input type="text" name="mac_address" id="mac_address" class="form-control">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Block</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="row mt-5">
+            <div class="col">
+                <h1 class="mt-3">Malicious Devices</h1>
+                {% if ip_mac_mappings %}
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>IP</th>
+                            <th>MAC Address</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ip, mac_address in ip_mac_mappings %}
+                        <tr>
+                            <td>{{ ip }}</td>
+                            <td>{% if mac_address == "entries" %}Not Found{% else %}{{ mac_address }}{% endif %}</td>
+                            <td>
+                                <form action="/block" method="post">
+                                    <input type="hidden" name="ip" value="{{ ip }}">
+                                    <button type="submit" class="btn btn-danger">Block</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                    <p>No Malicious Devices Found</p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="row mt-5">
+            <div class="col">
+                <h1 class="mt-3">Devices Using More Bandwidth</h1>
+                {% if highband_ips %}
+                <h3 class="mt-3">Block These Devices From Above Table</h3>
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>IP</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ip in highband_ips %}
+                        <tr>
+                            <td>{{ ip }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                    <p>No High Bandwidth Devices Found</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 </body>
 </html>

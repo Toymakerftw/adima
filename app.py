@@ -3,7 +3,7 @@ import pandas as pd
 from scapy.all import *
 from flask import Flask, render_template, request, redirect, jsonify
 from anomaly import detect_anomalies
-from subprocess import Popen, PIPE
+from subprocess import Popen, PIPE, subprocess
 import os
 import signal
 import time
@@ -181,65 +181,115 @@ def capture_packets_status():
 
 @app.route('/firewall')
 def firewall():
-
     # Create a SQLite database connection
     conn = sqlite3.connect('triage.db')
     cursor = conn.cursor()
 
-    # Select ip's from "mal_node" table
-    cursor.execute("SELECT ip FROM mal_node")
+    # Get the list of blocked websites from the "websites" table
+    cursor.execute("SELECT website FROM websites")
+    blocked_websites = [row[0] for row in cursor.fetchall()]
 
-    # Commit the changes and close the database connection
-    conn.commit()
+    # Get the list of blocked MAC addresses from the "mac_addresses" table
+    cursor.execute("SELECT mac_address FROM mac_addresses")
+    blocked_mac_addresses = [row[0] for row in cursor.fetchall()]
+
+    # Get the list of IPs from the "mal_node" table
+    cursor.execute("SELECT ip FROM mal_node")
+    mal_ips = [row[0] for row in cursor.fetchall()]
+
+    # Get the list of IPs from the "hiband_node" table
+    cursor.execute("SELECT ip FROM hiband_node")
+    highband_ips = [row[0] for row in cursor.fetchall()]
+
+    # Close the database connection
     conn.close()
 
-    # Fetch all the rows and store the IP addresses in the ip_addresses array
-    ip_addresses = [row[0] for row in cursor.fetchall()]
+    # Create a list to store the IP-MAC mappings
+    ip_mac_mappings = []
 
-    # Fetch IP addresses from mal_node table (replace this with your actual code)
-    #ip_addresses = ['192.168.1.1', '192.168.1.2', '192.168.1.3']
+    # Iterate over the list of IPs and find their corresponding MAC addresses using arp -a command
+    for ip in mal_ips + highband_ips:
+        try:
+            output = subprocess.check_output(['arp', '-a', ip])
+            mac_address = output.decode('utf-8').split()[3]
+            ip_mac_mappings.append((ip, mac_address))
+        except subprocess.CalledProcessError:
+            pass
 
-    results = []
-    for ip in ip_addresses:
-        # Run arp command to get MAC address and hostname
-        arp_output = subprocess.check_output(['arp', '-a', ip]).decode('utf-8')
-
-        # Parse the output to extract MAC address and hostname
-        mac_address = arp_output.split(' ')[3]
-        hostname = arp_output.split(' ')[0]
-
-        # Add the result to the list
-        results.append({'ip': ip, 'mac_address': mac_address, 'hostname': hostname})
-
-    # Render the template with the results
-    return render_template('firewall.html', results=results)
+    # Render the index.html template with the list of blocked websites and MAC addresses
+    return render_template('index.html', blocked_websites=blocked_websites, blocked_mac_addresses=blocked_mac_addresses, ip_mac_mappings=ip_mac_mappings, highband_ips=highband_ips)
 
 @app.route('/block', methods=['POST'])
 def block():
-    mac_address = request.form['mac_address']
+    website = request.form.get('website')
+    mac_address = request.form.get('mac_address')
 
     # Create a SQLite database connection
     conn = sqlite3.connect('triage.db')
     cursor = conn.cursor()
 
-    # Create the "blocked" table if it doesn't exist
-    cursor.execute('''CREATE TABLE IF NOT EXISTS blocked ( id INTEGER PRIMARY KEY AUTOINCREMENT, mac_address TEXT)''')
+    # Create the "websites" table if it doesn't exist
+    cursor.execute('''CREATE TABLE IF NOT EXISTS websites ( id INTEGER PRIMARY KEY AUTOINCREMENT, website TEXT)''')
 
-    # Run firewall-cmd command to block the MAC address with sudo privileges
-    subprocess.run(['sudo', 'firewall-cmd', '--permanent', '--add-rich-rule',
-                    'rule source mac="{0}" drop'.format(mac_address)], check=True)
+    # Create the "mac_addresses" table if it doesn't exist
+    cursor.execute('''CREATE TABLE IF NOT EXISTS mac_addresses ( id INTEGER PRIMARY KEY AUTOINCREMENT, mac_address TEXT)''')
 
-    # Reload the firewall with sudo privileges
-    subprocess.run(['sudo', 'firewall-cmd', '--reload'], check=True)
-
-    # Insert the blocked MAC address into the "blocked" table
-    cursor.execute("INSERT INTO blocked (mac_address) VALUES (?)", (mac_address,))
+    # Block the website with firewall-cmd command with sudo privileges
+    if website:
+        subprocess.run(['sudo', 'firewall-cmd', '--add-rich-rule', 'rule family="ipv4" source address="all" destination address="{0}" reject'.format(website)], check=True)
+        # Insert the blocked website into the "websites" table
+        cursor.execute("INSERT INTO websites (website) VALUES (?)", (website,))
+    # Block the MAC address with firewall-cmd command with sudo privileges
+    if mac_address:
+        subprocess.run(['sudo', 'firewall-cmd', '--add-rich-rule', 'rule family="ipv4" source address="all" mac address="{0}" reject'.format(mac_address)], check=True)
+        # Insert the blocked MAC address into the "mac_addresses" table
+        cursor.execute("INSERT INTO mac_addresses (mac_address) VALUES (?)", (mac_address,))
 
     # Commit the changes and close the database connection
     conn.commit()
     conn.close()
 
-    return "Blocked MAC address: {0}".format(mac_address)
+    if website:
+        return "Blocked website: {0}".format(website)
+    elif mac_address:
+        return "Blocked MAC address: {0}".format(mac_address)
+
+@app.route('/unblock', methods=['POST'])
+def unblock():
+    website = request.form.get('website')
+    mac_address = request.form.get('mac_address')
+
+    # Create a SQLite database connection
+    conn = sqlite3.connect('triage.db')
+    cursor = conn.cursor()
+
+    # Unblock the website with firewall-cmd command with sudo privileges
+    if website:
+        subprocess.run(['sudo', 'firewall-cmd', '--remove-rich-rule', 'rule family="ipv4" source address="all" destination address="{0}" reject'.format(website)], check=True)
+
+        # Reload the firewall with sudo privileges
+        subprocess.run(['sudo', 'firewall-cmd', '--reload'], check=True)
+
+        # Delete the blocked website from the "websites" table
+        cursor.execute("DELETE FROM websites WHERE website=?", (website,))
+    # Unblock the MAC address with firewall-cmd command with sudo privileges
+    if mac_address:
+        subprocess.run(['sudo', 'firewall-cmd', '--remove-rich-rule', 'rule family="ipv4" source address="all" mac address="{0}" reject'.format(mac_address)], check=True)
+
+        # Reload the firewall with sudo privileges
+        subprocess.run(['sudo', 'firewall-cmd', '--reload'], check=True)
+
+        # Delete the blocked MAC address from the "mac_addresses" table
+        cursor.execute("DELETE FROM mac_addresses WHERE mac_address=?", (mac_address,))
+
+    # Commit the changes and close the database connection
+    conn.commit()
+    conn.close()
+
+    if website:
+        return "Unblocked website: {0}".format(website)
+    elif mac_address:
+        return "Unblocked MAC address: {0}".format(mac_address)
 
 if __name__ == '__main__':
     app.run(debug=True)
