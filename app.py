@@ -3,7 +3,7 @@ import pandas as pd
 from scapy.all import *
 from flask import Flask, render_template, request, redirect, jsonify
 from anomaly import detect_anomalies
-from subprocess import Popen, PIPE, subprocess
+from subprocess import Popen, PIPE
 import os
 import signal
 import time
@@ -217,7 +217,7 @@ def firewall():
             pass
 
     # Render the index.html template with the list of blocked websites and MAC addresses
-    return render_template('index.html', blocked_websites=blocked_websites, blocked_mac_addresses=blocked_mac_addresses, ip_mac_mappings=ip_mac_mappings, highband_ips=highband_ips)
+    return render_template('firewall.html', blocked_websites=blocked_websites, blocked_mac_addresses=blocked_mac_addresses, ip_mac_mappings=ip_mac_mappings, highband_ips=highband_ips)
 
 @app.route('/block', methods=['POST'])
 def block():
