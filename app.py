@@ -173,7 +173,7 @@ def capture_packets():
     # Move the temporary file to the final location
     os.rename(temp_file, final_file)
 
-    return redirect('/')
+    return jsonify({'success': True}) , redirect('/')
 
 @app.route('/capture_packets_status')
 def capture_packets_status():
