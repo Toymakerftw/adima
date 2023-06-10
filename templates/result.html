@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Malicious IP Addresses</title>
+</head>
+<body>
+    <h1>Malicious IP Addresses</h1>
+    <table>
+        <tr>
+            <th>Source IP</th>
+            <th>Destination IP</th>
+        </tr>
+        {% for ip in malicious_ips %}
+        <tr>
+            <td>{{ ip[0] }}</td>
+            <td>{{ ip[1] }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
