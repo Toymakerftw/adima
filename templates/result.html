@@ -2,6 +2,17 @@
 <html>
 <head>
     <title>Malicious IP Addresses</title>
+    <style>
+        table {
+            border-collapse: collapse;
+        }
+        table, th, td {
+            border: 1px solid black;
+        }
+        th, td {
+            padding: 8px;
+        }
+    </style>
 </head>
 <body>
     <h1>Malicious IP Addresses</h1>
@@ -9,11 +20,19 @@
         <tr>
             <th>Source IP</th>
             <th>Destination IP</th>
+            <th>Packet Details</th>
         </tr>
         {% for ip in malicious_ips %}
         <tr>
             <td>{{ ip[0] }}</td>
             <td>{{ ip[1] }}</td>
+            <td>
+                <form action="/packet_details" method="POST">
+                    <input type="hidden" name="src_ip" value="{{ ip[0] }}">
+                    <input type="hidden" name="dst_ip" value="{{ ip[1] }}">
+                    <button type="submit">View Details</button>
+                </form>
+            </td>
         </tr>
         {% endfor %}
     </table>

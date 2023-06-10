@@ -86,5 +86,32 @@ def upload():
     return render_template("result.html", malicious_ips=malicious_ips)
 
 
+@app.route("/packet_details", methods=["POST"])
+def packet_details():
+    src_ip = request.form.get("src_ip")
+    dst_ip = request.form.get("dst_ip")
+
+    packets = rdpcap("uploaded.pcap")
+    packet_details = []
+    for pkt in packets:
+        if IP in pkt and pkt[IP].src == src_ip and pkt[IP].dst == dst_ip:
+            src_port = pkt.sport
+            dst_port = pkt.dport
+            protocol = pkt[IP].proto
+            payload_size = 0
+            if "Raw" in pkt:
+                payload_size = len(pkt["Raw"].load)
+            packet_details.append(
+                (pkt.summary(), src_port, dst_port, protocol, payload_size)
+            )
+
+    return render_template(
+        "packet_details.html",
+        src_ip=src_ip,
+        dst_ip=dst_ip,
+        packet_details=packet_details,
+    )
+
+
 if __name__ == "__main__":
     app.run(debug=True)
