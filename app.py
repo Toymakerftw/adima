@@ -1,12 +1,12 @@
+# Import the necessary libraries
 from flask import Flask, render_template, request
-from sklearn.ensemble import IsolationForest
 import xgboost as xgb
 import pandas as pd
 import numpy as np
 import socket
 from scapy.layers.inet import IP
 from scapy.all import *
-import struct
+import os
 import sqlite3
 from sqlite3 import Error
 
@@ -17,7 +17,9 @@ model = xgb.Booster()
 model.load_model("unsw_nb15_xgb_model2.model")
 
 
+# Create a connection pool
 def create_connection():
+    conn = None
     try:
         conn = sqlite3.connect("triage.db")
         return conn
@@ -25,6 +27,7 @@ def create_connection():
         print(e)
 
 
+# Connect to the SQLite database and create the "mal_ip" table
 def create_table(conn):
     try:
         cursor = conn.cursor()
@@ -42,66 +45,14 @@ def create_table(conn):
         print(e)
 
 
+# Insert malicious IPs into the "mal_ip" table
 def insert_malicious_ips(cursor, src_ip, dst_ip):
     try:
         cursor.execute(
-            "INSERT OR IGNORE INTO mal_ip (Source, Destination) VALUES (?, ?)",
-            (src_ip, dst_ip),
+            "INSERT INTO mal_ip (Source, Destination) VALUES (?, ?)", (src_ip, dst_ip)
         )
     except Error as e:
         print(e)
-
-
-def analyze_pcap(file_path):
-    packets = rdpcap(file_path)
-
-    data = []
-    for packet in packets:
-        if IP in packet and TCP in packet:
-            src_ip = struct.unpack("!I", inet_aton(packet[IP].src))[0]
-            dst_ip = struct.unpack("!I", inet_aton(packet[IP].dst))[0]
-            data.append([src_ip, dst_ip, packet[TCP].sport, packet[TCP].dport])
-
-    df = pd.DataFrame(data, columns=["src_ip", "dst_ip", "src_port", "dst_port"])
-
-    X = df.values
-
-    clf = IsolationForest(random_state=0).fit(X)
-
-    y_pred = clf.predict(X)
-
-    labels_df = pd.DataFrame(y_pred, columns=["label"])
-
-    df = pd.concat([df, labels_df], axis=1)
-
-    anomalies_df = df[df["label"] == -1]
-
-    conn = create_connection()
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS anomalies (
-            src_ip TEXT,
-            dst_ip TEXT
-        )
-        """
-    )
-
-    for _, row in anomalies_df.iterrows():
-        src_ip = socket.inet_ntoa(struct.pack("!I", row["src_ip"]))
-        dst_ip = socket.inet_ntoa(struct.pack("!I", row["dst_ip"]))
-        cursor.execute(
-            "INSERT OR IGNORE INTO anomalies (src_ip, dst_ip) VALUES (?, ?)",
-            (src_ip, dst_ip),
-        )
-
-    conn.commit()
-    conn.close()
-
-    anomalies = anomalies_df[["src_ip", "dst_ip"]].values.tolist()
-
-    return anomalies
 
 
 @app.route("/")
@@ -111,34 +62,83 @@ def home():
 
 @app.route("/upload", methods=["POST"])
 def upload():
+    # Check if a file was submitted
     if "pcap_file" not in request.files:
         return "No file uploaded"
 
+    # Save the uploaded file
     file = request.files["pcap_file"]
     file.save("uploaded.pcap")
 
-    malicious_ips = analyze_pcap("uploaded.pcap")
+    # Read the pcap file and extract packet data
+    packets = rdpcap("uploaded.pcap")
+    data = []
+    for pkt in packets:
+        try:
+            if IP in pkt:
+                # Extract relevant fields from packet
+                src_ip = pkt[IP].src
+                dst_ip = pkt[IP].dst
+                src_port = pkt.sport
+                dst_port = pkt.dport
+                protocol = pkt[IP].proto
+                payload_size = len(pkt["Raw"].load)
+                # Append packet data to list
+                data.append(
+                    [src_ip, dst_ip, src_port, dst_port, protocol, payload_size]
+                )
+        except:
+            pass
 
+    # Create a DataFrame from the extracted data
+    df = pd.DataFrame(
+        data,
+        columns=[
+            "src_ip",
+            "dst_ip",
+            "src_port",
+            "dst_port",
+            "protocol",
+            "payload_size",
+        ],
+    )
+
+    # Convert IP addresses to integers for easier processing
+    df["src_ip"] = df["src_ip"].apply(
+        lambda x: int.from_bytes(socket.inet_aton(x), byteorder="big")
+    )
+    df["dst_ip"] = df["dst_ip"].apply(
+        lambda x: int.from_bytes(socket.inet_aton(x), byteorder="big")
+    )
+
+    # Use the trained model to classify packets as malicious or benign
+    dtest = xgb.DMatrix(df)
+    predictions = model.predict(dtest)
+
+    # Create a connection from the connection pool
     conn = create_connection()
-    cursor = create_table(conn)
+    cursor = None
+    if conn is not None:
+        # Create the "mal_ip" table if it doesn't exist
+        cursor = create_table(conn)
 
-    for src_ip, dst_ip in malicious_ips:
-        src_ip_str = socket.inet_ntoa(struct.pack("!I", src_ip))
-        dst_ip_str = socket.inet_ntoa(struct.pack("!I", dst_ip))
-        insert_malicious_ips(cursor, src_ip_str, dst_ip_str)
-        conn.commit()
+    # Filter out the malicious packets
+    malicious_ips = []
+    for i in range(len(predictions)):
+        if predictions[i] == 1:
+            if IP in packets[i]:
+                malicious_ips.append((packets[i][IP].src, packets[i][IP].dst))
+                # Insert the malicious IPs into the "mal_ip" table
+                if cursor is not None:
+                    insert_malicious_ips(cursor, packets[i][IP].src, packets[i][IP].dst)
+                    conn.commit()
 
-    conn.close()
+    # Close the connection
+    if conn is not None:
+        conn.close()
 
-    malicious_ips_str = [
-        (
-            socket.inet_ntoa(struct.pack("!I", src_ip)),
-            socket.inet_ntoa(struct.pack("!I", dst_ip)),
-        )
-        for src_ip, dst_ip in malicious_ips
-    ]
-
-    return render_template("result.html", malicious_ips=malicious_ips_str)
+    # Render the result.html template with the malicious IPs
+    return render_template("result.html", malicious_ips=malicious_ips)
 
 
 @app.route("/packet_details", methods=["POST"])
