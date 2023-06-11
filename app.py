@@ -34,10 +34,22 @@ def create_connection():
             """
             CREATE TABLE IF NOT EXISTS mal_ip (
                 Source TEXT,
-                Destination TEXT
+                Destination TEXT,
+                UNIQUE(Source, Destination) ON CONFLICT IGNORE
             )
             """
         )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS anomalies (
+                Source TEXT,
+                Destination TEXT,
+                UNIQUE(Source, Destination) ON CONFLICT IGNORE
+            )
+            """
+        )
+
         conn.commit()
         return conn
     except Error as e:
@@ -49,6 +61,17 @@ def insert_malicious_ips(cursor, ips):
     try:
         cursor.executemany(
             "INSERT INTO mal_ip (Source, Destination) VALUES (?, ?)", ips
+        )
+        cursor.connection.commit()
+    except Error as e:
+        print(e)
+
+
+# Insert Anomalous IPs into the "anomalies" table
+def insert_anomalous_ips(cursor, ips):
+    try:
+        cursor.executemany(
+            "INSERT INTO anomalies (Source, Destination) VALUES (?, ?)", ips
         )
         cursor.connection.commit()
     except Error as e:
@@ -90,7 +113,7 @@ def analyze_pcap(file_path):
 
         with conn:
             cursor = conn.cursor()
-            insert_malicious_ips(cursor, malicious_ips)
+            insert_anomalous_ips(cursor, malicious_ips)
 
         print("Anomalies saved to database.")
 
@@ -111,15 +134,18 @@ def upload():
     packets = rdpcap("uploaded.pcap")
     data = [
         (
-            int.from_bytes(socket.inet_aton(pkt[IP].src), byteorder="big"),
-            int.from_bytes(socket.inet_aton(pkt[IP].dst), byteorder="big"),
-            pkt.sport,
-            pkt.dport,
-            pkt[IP].proto,
-            len(pkt["Raw"].load) if "Raw" in pkt else 0,
+            int.from_bytes(socket.inet_aton(pkt[IP].src), byteorder="big")
+            if IP in pkt
+            else None,
+            int.from_bytes(socket.inet_aton(pkt[IP].dst), byteorder="big")
+            if IP in pkt
+            else None,
+            pkt.sport if TCP in pkt else None,
+            pkt.dport if TCP in pkt else None,
+            pkt[IP].proto if IP in pkt else None,
+            len(pkt["Raw"].load) if IP in pkt and "Raw" in pkt else 0,
         )
         for pkt in packets
-        if IP in pkt
     ]
 
     df = pd.DataFrame(
@@ -154,11 +180,14 @@ def upload():
 
         protocol_names_df = df.replace({"protocol": protocol_names})
 
-        return render_template(
-            "result.html",
-            malicious_ips=malicious_ips,
-            protocol_names=protocol_names_df["protocol"].tolist(),
-        )
+    unique_malicious_ips = list(set(malicious_ips))
+    unique_protocol_names = list(set(protocol_names_df["protocol"].tolist()))
+
+    return render_template(
+        "result.html",
+        malicious_ips=unique_malicious_ips,
+        protocol_names=unique_protocol_names,
+    )
 
 
 @app.route("/packet_details", methods=["POST"])
@@ -170,8 +199,8 @@ def packet_details():
     packet_details = [
         (
             pkt.summary(),
-            pkt.sport,
-            pkt.dport,
+            pkt.sport if "sport" in pkt else "N/A",
+            pkt.dport if "dport" in pkt else "N/A",
             protocol_names.get(pkt[IP].proto, "Unknown"),
             len(pkt.getlayer(Raw).load) if pkt.haslayer(Raw) else 0,
         )
