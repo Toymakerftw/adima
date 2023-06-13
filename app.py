@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, redirect
 from sklearn.ensemble import IsolationForest
 import struct
 import xgboost as xgb
@@ -8,6 +8,10 @@ from scapy.layers.inet import IP
 from scapy.all import *
 import sqlite3
 from sqlite3 import Error
+from subprocess import Popen, PIPE
+import os
+import signal
+import time
 
 app = Flask(__name__)
 
@@ -125,15 +129,30 @@ def home():
     return render_template("index.html")
 
 
-@app.route("/upload", methods=["POST"])
-def upload():
-    if "pcap_file" not in request.files:
-        return "No file uploaded"
+@app.route("/capture_packets")
+def capture_packets():
+    temp_file = "pcap/temp.pcap"  # Temporary file path for capturing packets
+    final_file = "pcap/packets.pcap"  # Final file path for storing captured packets
 
-    file = request.files["pcap_file"]
-    file.save("uploaded.pcap")
+    # Start tcpdump to capture packets and save them to the temporary file
+    command = ["sudo", "tcpdump", "-w", temp_file, "-G", "180"]
+    process = Popen(command, stdout=PIPE, stderr=PIPE, preexec_fn=os.setsid)
 
-    packets = rdpcap("uploaded.pcap")
+    # Wait for 3 minutes
+    time.sleep(180)
+
+    # Terminate tcpdump process
+    os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+
+    # Move the temporary file to the final location
+    os.rename(temp_file, final_file)
+
+    return redirect("/")
+
+
+@app.route("/predict", methods=["POST"])
+def predict():
+    packets = rdpcap("captured.pcap")
     data = [
         (
             int.from_bytes(socket.inet_aton(pkt[IP].src), byteorder="big")

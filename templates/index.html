@@ -45,39 +45,12 @@
     </nav>
     <div class="container">
         <h1 class="mt-4">Upload a PCAP File</h1>
-        <form action="/upload" method="POST" enctype="multipart/form-data" onsubmit="return validateForm()">
-            <div class="mb-3">
-                <label for="pcap_file" class="form-label">Select a PCAP file:</label>
-                <input class="form-control" type="file" name="pcap_file" id="pcap_file" accept=".pcap">
-                <small id="fileError" class="text-danger"></small>
-            </div>
-            <button type="submit" class="btn btn-primary">Upload</button>
+        <form action="/capture_packets" method="get">
+            <button type="submit" class="btn btn-primary">Analyzer Network</button>
         </form>
     </div>
 
     <!-- Include Bootstrap JavaScript (optional) -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        function validateForm() {
-            var fileInput = document.getElementById('pcap_file');
-            var fileError = document.getElementById('fileError');
-            var file = fileInput.files[0];
-
-            if (!file) {
-                fileError.textContent = 'Please select a file.';
-                return false;
-            }
-
-            var allowedExtensions = ['pcap'];
-            var fileExtension = file.name.split('.').pop();
-
-            if (!allowedExtensions.includes(fileExtension.toLowerCase())) {
-                fileError.textContent = 'Invalid file type. Only PCAP files are allowed.';
-                return false;
-            }
-
-            return true;
-        }
-    </script>
 </body>
 </html>
