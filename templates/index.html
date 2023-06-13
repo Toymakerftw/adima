@@ -2,12 +2,82 @@
 <html>
 <head>
     <title>PCAP File Upload</title>
+    <!-- Include Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500&display=swap" rel="stylesheet"/>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <h1>Upload a PCAP File</h1>
-    <form action="/upload" method="POST" enctype="multipart/form-data">
-        <input type="file" name="pcap_file" accept=".pcap">
-        <input type="submit" value="Upload">
-    </form>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+          <a class="navbar-brand" style="color:black;" href="#">Triage</a>
+          <button
+            class="navbar-toggler"
+            type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#navbarNav"
+            aria-controls="navbarNav"
+            aria-expanded="false"
+            aria-label="Toggle navigation"
+          >
+            <span class="navbar-toggler-icon"></span>
+          </button>
+          <div
+            class="collapse navbar-collapse justify-content-end"
+            id="navbarNav"
+          >
+            <ul class="navbar-nav">
+              <li class="nav-item">
+                <a class="nav-link" href="#">Dashboard</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="#">Anomalies</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="#">Firewall</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="#">About</a>
+              </li>
+            </ul>
+          </div>
+        </div>
+    </nav>
+    <div class="container">
+        <h1 class="mt-4">Upload a PCAP File</h1>
+        <form action="/upload" method="POST" enctype="multipart/form-data" onsubmit="return validateForm()">
+            <div class="mb-3">
+                <label for="pcap_file" class="form-label">Select a PCAP file:</label>
+                <input class="form-control" type="file" name="pcap_file" id="pcap_file" accept=".pcap">
+                <small id="fileError" class="text-danger"></small>
+            </div>
+            <button type="submit" class="btn btn-primary">Upload</button>
+        </form>
+    </div>
+
+    <!-- Include Bootstrap JavaScript (optional) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function validateForm() {
+            var fileInput = document.getElementById('pcap_file');
+            var fileError = document.getElementById('fileError');
+            var file = fileInput.files[0];
+
+            if (!file) {
+                fileError.textContent = 'Please select a file.';
+                return false;
+            }
+
+            var allowedExtensions = ['pcap'];
+            var fileExtension = file.name.split('.').pop();
+
+            if (!allowedExtensions.includes(fileExtension.toLowerCase())) {
+                fileError.textContent = 'Invalid file type. Only PCAP files are allowed.';
+                return false;
+            }
+
+            return true;
+        }
+    </script>
 </body>
 </html>
