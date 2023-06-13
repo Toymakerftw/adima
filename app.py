@@ -59,6 +59,7 @@ def create_connection():
 # Insert malicious IPs into the "mal_ip" table
 def insert_malicious_ips(cursor, ips):
     try:
+        cursor.execute("DELETE FROM mal_ip")
         cursor.executemany(
             "INSERT INTO mal_ip (Source, Destination) VALUES (?, ?)", ips
         )
@@ -70,6 +71,7 @@ def insert_malicious_ips(cursor, ips):
 # Insert Anomalous IPs into the "anomalies" table
 def insert_anomalous_ips(cursor, ips):
     try:
+        cursor.execute("DELETE FROM anomalies")
         cursor.executemany(
             "INSERT INTO anomalies (Source, Destination) VALUES (?, ?)", ips
         )
