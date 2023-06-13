@@ -182,12 +182,23 @@ def upload():
 
         protocol_names_df = df.replace({"protocol": protocol_names})
 
-    unique_malicious_ips = list(set(malicious_ips))
+    with conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT DISTINCT mal_ip.Source, mal_ip.Destination
+            FROM mal_ip
+            INNER JOIN anomalies ON mal_ip.Source = anomalies.Source AND mal_ip.Destination = anomalies.Destination
+            """
+        )
+        rows = cursor.fetchall()
+        common_ips = [(row[0], row[1]) for row in rows]
+
     unique_protocol_names = list(set(protocol_names_df["protocol"].tolist()))
 
     return render_template(
         "result.html",
-        malicious_ips=unique_malicious_ips,
+        common_ips=common_ips,
         protocol_names=unique_protocol_names,
     )
 
