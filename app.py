@@ -8,6 +8,7 @@ from scapy.layers.inet import IP
 from scapy.all import *
 import sqlite3
 from sqlite3 import Error
+import ipaddress
 
 app = Flask(__name__)
 
@@ -243,6 +244,68 @@ def anomalies():
         anomalies = [(row[0], row[1]) for row in rows]
 
     return render_template("anomlaies.html", anomalies=anomalies)
+
+
+@app.route("/firewall")
+def firewall():
+    # Create a SQLite database connection
+    conn = sqlite3.connect("triage.db")
+    cursor = conn.cursor()
+
+    # Create the "websites" table if it doesn't exist
+    cursor.execute(
+        """CREATE TABLE IF NOT EXISTS websites ( id INTEGER PRIMARY KEY AUTOINCREMENT, website TEXT)"""
+    )
+
+    # Create the "mac_addresses" table if it doesn't exist
+    cursor.execute(
+        """CREATE TABLE IF NOT EXISTS mac_addresses ( id INTEGER PRIMARY KEY AUTOINCREMENT, mac_address TEXT)"""
+    )
+
+    # Create the "hiband_node" table if it doesn't exist
+    cursor.execute(
+        """CREATE TABLE IF NOT EXISTS hiband_node ( id INTEGER PRIMARY KEY AUTOINCREMENT, ip TEXT)"""
+    )
+
+    # Get the list of blocked websites from the "websites" table
+    cursor.execute("SELECT website FROM websites")
+    blocked_websites = [row[0] for row in cursor.fetchall()]
+
+    # Get the list of blocked MAC addresses from the "mac_addresses" table
+    cursor.execute("SELECT mac_address FROM mac_addresses")
+    blocked_mac_addresses = [row[0] for row in cursor.fetchall()]
+
+    # Get the list of IPs from the "mal_ip" table
+    cursor.execute("SELECT DISTINCT mal_ip.Source, mal_ip.Destination FROM mal_ip")
+    mal_ips = [(row[0], row[1]) for row in cursor.fetchall()]
+
+    # Get the list of IPs from the "hiband_node" table
+    cursor.execute("SELECT ip FROM hiband_node")
+    highband_ips = [row[0] for row in cursor.fetchall()]
+
+    # Close the database connection
+    conn.close()
+
+    # Create a list to store the IP-MAC mappings
+    ip_mac_mappings = []
+
+    # Iterate over the list of IPs and find their corresponding MAC addresses using arp -a command
+    for ip in mal_ips + highband_ips:
+        try:
+            if ipaddress.ip_address(ip[0]).is_private:
+                output = subprocess.check_output(["arp", "-a", ip[0]])
+                mac_address = output.decode("utf-8").split()[3]
+                ip_mac_mappings.append((ip[0], mac_address))
+        except (subprocess.CalledProcessError, ValueError):
+            pass
+    # Render the index.html template with the list of blocked websites and MAC addresses
+    return render_template(
+        "firewall.html",
+        blocked_websites=blocked_websites,
+        blocked_mac_addresses=blocked_mac_addresses,
+        ip_mac_mappings=ip_mac_mappings,
+        highband_ips=highband_ips,
+    )
 
 
 if __name__ == "__main__":
