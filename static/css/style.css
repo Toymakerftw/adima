@@ -1,0 +1,39 @@
+body {
+    background-color: white;
+  }
+
+  .navbar-brand {
+    font-family: "Exo 2", sans-serif;
+    font-size: 40px;
+    margin-right: auto;
+  }
+
+  .navbar-brand:hover {
+    color: black;
+  }
+
+  .navbar {
+    border-bottom-right-radius: 0.25rem;
+    border-bottom-left-radius: 0.25rem;
+  }
+
+  .navbar-dark .navbar-nav .nav-link {
+    color: black;
+  }
+
+  .navbar-dark .navbar-nav .nav-link:hover {
+    color: red;
+  }
+
+  .container {
+    margin-top: 50px;
+    padding: 20px;
+  }
+  
+  .progress {
+    margin-top: 10px;
+}
+
+.progress-bar {
+    transition: width 0.3s ease-in-out;
+}

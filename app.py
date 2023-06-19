@@ -229,5 +229,21 @@ def packet_details():
     )
 
 
+@app.route("/anomalies")
+def anomalies():
+    conn = create_connection()
+    with conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM anomalies
+            """
+        )
+        rows = cursor.fetchall()
+        anomalies = [(row[0], row[1]) for row in rows]
+
+    return render_template("anomlaies.html", anomalies=anomalies)
+
+
 if __name__ == "__main__":
     app.run(debug=True)

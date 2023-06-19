@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Anomalous IP Addresses</title>
+    <!-- Include Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+    <nav class="navbar navbar-expand-lg">
+        <div class="container">
+            <a class="navbar-brand" style="color:black;" href="#">Triage</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+                aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse justify-content-end" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/anomalies">Anomalies</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/firewall">Firewall</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#">About</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+    <div class="container mt-4">
+        <h1>Anomalous IP Addresses</h1>
+        <table class="table table-borderless">
+            <thead class="thead-dark">
+                <tr>
+                    <th>Source IP</th>
+                    <th>Destination IP</th>
+                    <th>Packet Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ip in anomalies %}
+                <tr>
+                    <td>{{ ip[0] }}</td>
+                    <td>{{ ip[1] }}</td>
+                    <td>
+                        <form action="/packet_details" method="POST">
+                            <input type="hidden" name="src_ip" value="{{ ip[0] }}">
+                            <input type="hidden" name="dst_ip" value="{{ ip[1] }}">
+                            <button type="submit" class="btn btn-primary">View Details</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Include Bootstrap JavaScript (optional) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+
+</html>
