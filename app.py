@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, redirect, url_for, flash
 from sklearn.ensemble import IsolationForest
 import struct
 import xgboost as xgb
@@ -47,6 +47,24 @@ def create_connection():
                 Source TEXT,
                 Destination TEXT,
                 UNIQUE(Source, Destination) ON CONFLICT IGNORE
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS blocked_ip (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ip_address TEXT UNIQUE
+            )
+            """
+        )
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS blocked_mac (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                mac_address TEXT UNIQUE
             )
             """
         )
@@ -252,16 +270,6 @@ def firewall():
     conn = sqlite3.connect("triage.db")
     cursor = conn.cursor()
 
-    # Create the "websites" table if it doesn't exist
-    cursor.execute(
-        """CREATE TABLE IF NOT EXISTS websites ( id INTEGER PRIMARY KEY AUTOINCREMENT, website TEXT)"""
-    )
-
-    # Create the "mac_addresses" table if it doesn't exist
-    cursor.execute(
-        """CREATE TABLE IF NOT EXISTS mac_addresses ( id INTEGER PRIMARY KEY AUTOINCREMENT, mac_address TEXT)"""
-    )
-
     # Create the "hiband_node" table if it doesn't exist
     cursor.execute(
         """CREATE TABLE IF NOT EXISTS hiband_node ( id INTEGER PRIMARY KEY AUTOINCREMENT, ip TEXT)"""
@@ -272,8 +280,12 @@ def firewall():
     blocked_websites = [row[0] for row in cursor.fetchall()]
 
     # Get the list of blocked MAC addresses from the "mac_addresses" table
-    cursor.execute("SELECT mac_address FROM mac_addresses")
+    cursor.execute("SELECT mac_address FROM blocked_mac")
     blocked_mac_addresses = [row[0] for row in cursor.fetchall()]
+
+    # Get the list of blocked IP addresses from the "mac_addresses" table
+    cursor.execute("SELECT ip_address FROM blocked_ip")
+    blocked_ip_addresses = [row[0] for row in cursor.fetchall()]
 
     # Get the list of IPs from the "mal_ip" table
     cursor.execute("SELECT DISTINCT mal_ip.Source, mal_ip.Destination FROM mal_ip")
@@ -298,14 +310,146 @@ def firewall():
                 ip_mac_mappings.append((ip[0], mac_address))
         except (subprocess.CalledProcessError, ValueError):
             pass
-    # Render the index.html template with the list of blocked websites and MAC addresses
+
+    # Render the firewall.html template with the list of blocked websites, MAC addresses, and IP-MAC mappings
     return render_template(
         "firewall.html",
         blocked_websites=blocked_websites,
         blocked_mac_addresses=blocked_mac_addresses,
+        blocked_ip_addresses=blocked_ip_addresses,
         ip_mac_mappings=ip_mac_mappings,
         highband_ips=highband_ips,
     )
+
+
+# Insert blocked IP addresses into the "blocked_ip" table
+def insert_blocked_ips(cursor, ips):
+    try:
+        cursor.executemany("INSERT INTO blocked_ip (ip_address) VALUES (?)", ips)
+        cursor.connection.commit()
+    except Error as e:
+        print(e)
+
+
+# Insert blocked MAC addresses into the "blocked_mac" table
+def insert_blocked_macs(cursor, macs):
+    try:
+        cursor.executemany("INSERT INTO blocked_mac (mac_address) VALUES (?)", macs)
+        cursor.connection.commit()
+    except Error as e:
+        print(e)
+
+
+@app.route("/block_ip", methods=["POST"])
+def block_ip():
+    ip_address = request.form.get("ip")
+
+    # Execute the iptables command to block the IP address
+    subprocess.run(["sudo", "iptables", "-A", "INPUT", "-s", ip_address, "-j", "DROP"])
+
+    conn = create_connection()
+    if conn is not None:
+        with conn:
+            cursor = conn.cursor()
+            insert_blocked_ips(cursor, [(ip_address,)])
+
+    # Redirect back to the firewall page
+    return redirect(url_for("firewall"))
+
+
+@app.route("/block_mac", methods=["POST"])
+def block_mac():
+    mac_address = request.form.get("mac_address")
+
+    # Execute the iptables command to block the MAC address
+    subprocess.run(
+        [
+            "sudo",
+            "iptables",
+            "-A",
+            "INPUT",
+            "-m",
+            "mac",
+            "--mac-source",
+            mac_address,
+            "-j",
+            "DROP",
+        ]
+    )
+
+    conn = create_connection()
+    if conn is not None:
+        with conn:
+            cursor = conn.cursor()
+            insert_blocked_macs(cursor, [(mac_address,)])
+
+    # Redirect back to the firewall page
+    return redirect(url_for("firewall"))
+
+
+@app.route("/unblock_ip", methods=["POST"])
+def unblock_ip():
+    ip_address = request.form.get("ip")
+
+    if ip_address is None:
+        # Handle the case when the IP address is not provided
+        flash("Invalid IP address.")
+        return redirect(url_for("firewall"))
+
+    # Execute the iptables command to remove the rule blocking the IP address
+    try:
+        subprocess.run(
+            ["sudo", "iptables", "-D", "INPUT", "-s", ip_address, "-j", "DROP"]
+        )
+    except subprocess.CalledProcessError as e:
+        # Handle any errors that occur during the subprocess execution
+        flash("An error occurred while unblocking the IP address.")
+        print(e)
+
+    conn = create_connection()
+    if conn is not None:
+        with conn:
+            cursor = conn.cursor()
+            # Remove the blocked IP address from the "blocked_ip" table
+            cursor.execute("DELETE FROM blocked_ip WHERE ip_address = ?", (ip_address,))
+            cursor.connection.commit()
+
+    # Redirect back to the firewall page
+    return redirect(url_for("firewall"))
+
+
+@app.route("/unblock_mac", methods=["POST"])
+def unblock_mac():
+    mac_address = request.form.get("mac_address")
+
+    # Execute the iptables command to remove the rule blocking the MAC address
+    subprocess.run(
+        [
+            "sudo",
+            "iptables",
+            "-D",
+            "INPUT",
+            "-m",
+            "mac",
+            "--mac-source",
+            mac_address,
+            "-j",
+            "DROP",
+        ]
+    )
+
+    conn = create_connection()
+    if conn is not None:
+        with conn:
+            cursor = conn.cursor()
+            # Remove the blocked MAC address from the "blocked_mac" table
+            cursor.execute(
+                "DELETE FROM blocked_mac WHERE mac_address = ?", (mac_address,)
+            )
+            cursor.connection.commit()
+
+    # Redirect back to the firewall page
+    return redirect(url_for("firewall"))
 
 
 if __name__ == "__main__":
