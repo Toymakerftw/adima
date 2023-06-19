@@ -46,7 +46,10 @@
                 </tr>
             </thead>
             <tbody>
+                {% set unique_ips = [] %}
                 {% for ip in anomalies %}
+                {% if ip not in unique_ips %}
+                {% set _ = unique_ips.append(ip) %}
                 <tr>
                     <td>{{ ip[0] }}</td>
                     <td>{{ ip[1] }}</td>
@@ -58,6 +61,7 @@
                         </form>
                     </td>
                 </tr>
+                {% endif %}
                 {% endfor %}
             </tbody>
         </table>
