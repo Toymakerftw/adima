@@ -99,6 +99,17 @@ def insert_anomalous_ips(cursor, ips):
         print(e)
 
 
+def insert_highband_ips(cursor, hiband_node):
+    try:
+        cursor.execute("DELETE FROM hiband_node")
+        cursor.executemany(
+            "INSERT INTO hiband_node (ip, payload_size) VALUES (?, ?)", hiband_node
+        )
+        cursor.connection.commit()
+    except Error as e:
+        print(e)
+
+
 # Find anomalies in pcap using isolation forest
 def analyze_pcap(file_path):
     packets = rdpcap(file_path)
@@ -137,6 +148,36 @@ def analyze_pcap(file_path):
             insert_anomalous_ips(cursor, malicious_ips)
 
         print("Anomalies saved to database.")
+
+        highband_nodes = find_highband_nodes(file_path)
+        with conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM hiband_node")
+            insert_highband_ips(cursor, highband_nodes)
+
+        print("High-bandwidth nodes saved to database.")
+
+
+def find_highband_nodes(file_path, num_nodes=10):
+    packets = rdpcap(file_path)
+
+    # Calculate total payload size for each source IP
+    ip_payload_sizes = {}
+    for packet in packets:
+        if IP in packet and TCP in packet:
+            src_ip = packet[IP].src
+            payload_size = len(packet[TCP].payload)
+            ip_payload_sizes[src_ip] = ip_payload_sizes.get(src_ip, 0) + payload_size
+
+    # Sort the IP payload sizes in descending order
+    sorted_ip_payload_sizes = sorted(
+        ip_payload_sizes.items(), key=lambda x: x[1], reverse=True
+    )
+
+    # Retrieve the top high-bandwidth nodes
+    highband_nodes = sorted_ip_payload_sizes[:num_nodes]
+
+    return highband_nodes
 
 
 @app.route("/")
@@ -272,7 +313,7 @@ def firewall():
 
     # Create the "hiband_node" table if it doesn't exist
     cursor.execute(
-        """CREATE TABLE IF NOT EXISTS hiband_node ( id INTEGER PRIMARY KEY AUTOINCREMENT, ip TEXT)"""
+        """CREATE TABLE IF NOT EXISTS hiband_node ( id INTEGER PRIMARY KEY AUTOINCREMENT, ip TEXT, payload_size INTEGER);"""
     )
 
     # Get the list of blocked websites from the "websites" table
@@ -292,8 +333,8 @@ def firewall():
     mal_ips = [(row[0], row[1]) for row in cursor.fetchall()]
 
     # Get the list of IPs from the "hiband_node" table
-    cursor.execute("SELECT ip FROM hiband_node")
-    highband_ips = [row[0] for row in cursor.fetchall()]
+    cursor.execute("SELECT ip, payload_size FROM hiband_node")
+    highband_ips = [(row[0], row[1]) for row in cursor.fetchall()]
 
     # Close the database connection
     conn.close()
